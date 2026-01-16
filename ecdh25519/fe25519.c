@@ -10,121 +10,62 @@ const fe25519 fe25519_zero = {{0,0,0,0,0,0,0,0,0,0}};
 const fe25519 fe25519_one  = {{1,0,0,0,0,0,0,0,0,0}};
 const fe25519 fe25519_two  = {{2,0,0,0,0,0,0,0,0,0}};
 
-/* sqrt(-1) */
+/* sqrt(-1) in 10-limb 25.5-bit format */
 const fe25519 fe25519_sqrtm1 = {{0x20ea0b0, 0x186c9d2, 0x8f189d7, 0x035697f, 0x0bd0c60, 
                                  0x1fbd7a7, 0x2804c9e, 0x1e16569, 0x004fc1d, 0x0ae0c92}};
-/* -sqrt(-1) */
-const fe25519 fe25519_msqrtm1 = {{ 32595773,
-  7943725,
-  57730914,
-  30054016,
-  54719391,
-  272472,
-  25146209,
-  2005654,
-  66782178,
-  22147949 }};
 
-/* -1 */
-const fe25519 fe25519_m1 = {{ 67108844,
-  33554431,
-  67108863,
-  33554431,
-  67108863,
-  33554431,
-  67108863,
-  33554431,
-  67108863,
-  33554431 }}
+/* -sqrt(-1) in 10-limb format */
+const fe25519 fe25519_msqrtm1 = {{0x1f15f4f, 0x1e79362, 0x10e7628, 0x1ca9680, 0x142f39f, 
+                                  0x0042858, 0x17fb361, 0x01e9a96, 0x1fb03e2, 0x151f36d}};
 
+/* -1 in 10-limb format */
+const fe25519 fe25519_m1 = {{0x3ffffec, 0x1ffffff, 0x3ffffff, 0x1ffffff, 0x3ffffff, 
+                            0x1ffffff, 0x3ffffff, 0x1ffffff, 0x3ffffff, 0x1ffffff}};
 
-static uint32_t equal(uint32_t a,uint32_t b) /* 16-bit inputs */
-{
-  uint32_t x = a ^ b; /* 0: yes; 1..65535: no */
-  x -= 1; /* 4294967295: yes; 0..65534: no */
-  x >>= 31; /* 1: yes; 0: no */
-  return x;
-}
-
-static uint32_t ge(uint32_t a,uint32_t b) /* 16-bit inputs */
-{
-  uint32_t x = a;
-  x -= (uint32_t) b; /* 0..65535: yes; 4294901761..4294967295: no */
-  x >>= 31; /* 0: yes; 1: no */
-  x ^= 1; /* 1: yes; 0: no */
-  return x;
-}
-
-static uint32_t times19(uint32_t a)
-{
-  return (a << 4) + (a << 1) + a;
-}
-
-static uint32_t times38(uint32_t a)
-{
-  return (a << 5) + (a << 2) + (a << 1);
-}
-
-static void reduce_add_sub(fe25519 *r)
-{
-  uint32_t t;
-  int i,rep;
-
-  for(rep=0;rep<2;rep++)
-  {
-    t = r->v[31] >> 7;
-    r->v[31] &= 127;
-    t = times19(t);
-    r->v[0] += t;
-    for(i=0;i<31;i++)
-    {
-      t = r->v[i] >> 8;
-      r->v[i+1] += t;
-      r->v[i] &= 255;
-    }
-  }
-}
-
-static void reduce_mul(fe25519 *r)
-{
-  uint32_t t;
-  int i,rep;
-
-  for(rep=0;rep<3;rep++)
-  {
-    t = r->v[31] >> 7;
-    r->v[31] &= 127;
-    t = times19(t);
-    r->v[0] += t;
-    for(i=0;i<31;i++)
-    {
-      t = r->v[i] >> 8;
-      r->v[i+1] += t;
-      r->v[i] &= 255;
-    }
-  }
-}
 
 /* reduction modulo 2^255-19 */
 void fe25519_freeze(fe25519 *r) 
 {
+  fe25519 t = *r;
+  uint32_t carry, mask;
   int i;
-  uint32_t m = equal(r->v[31],127);
-  for(i=30;i>0;i--)
-    m &= equal(r->v[i],255);
-  m &= ge(r->v[0],237);
-
-  m = -m;
-
-  r->v[31] -= m&127;
-  for(i=30;i>0;i--)
-    r->v[i] -= m&255;
-  r->v[0] -= m&237;
+  
+  // Full carry propagation
+  carry = 0;
+  for(i=0; i<10; i++) {
+    t.v[i] += carry;
+    carry = t.v[i] >> ((i & 1) ? 25 : 26);
+    t.v[i] &= (i & 1) ? 0x1ffffff : 0x3ffffff;
+  }
+  t.v[0] += carry * 19;
+  carry = t.v[0] >> 26;
+  t.v[0] &= 0x3ffffff;
+  t.v[1] += carry;
+  
+  // Subtract p if >= p
+  t.v[0] += 19;
+  carry = 0;
+  for(i=0; i<10; i++) {
+    t.v[i] += carry;
+    carry = t.v[i] >> ((i & 1) ? 25 : 26);
+    t.v[i] &= (i & 1) ? 0x1ffffff : 0x3ffffff;
+  }
+  t.v[0] += carry * 19;
+  carry = t.v[0] >> 26;
+  t.v[0] &= 0x3ffffff;
+  t.v[1] += carry;
+  
+  // If subtraction didn't overflow, use it
+  mask = (t.v[9] >> 24) - 1;  // -1 if no overflow, 0 if overflow
+  mask = ~mask;
+  
+  for(i=0; i<10; i++) {
+    r->v[i] = (r->v[i] & mask) | (t.v[i] & ~mask);
+  }
 }
 
 void fe25519_unpack(fe25519 *r, const unsigned char x[32])
 {
-  // Unpack 32 bytes into 10 limbs of 25.5 bits
   uint32_t in[8];
   int i;
   
@@ -134,58 +75,69 @@ void fe25519_unpack(fe25519 *r, const unsigned char x[32])
   }
   
   r->v[0] = in[0] & 0x3ffffff;
-  r->v[1] = (in[0] >> 26) | ((in[1] & 0x7ffff) << 6);
-  r->v[2] = (in[1] >> 19) | ((in[2] & 0xfff) << 13);
-  r->v[3] = (in[2] >> 12) | ((in[3] & 0x1f) << 20);
+  r->v[1] = ((in[0] >> 26) | (in[1] << 6)) & 0x1ffffff;
+  r->v[2] = ((in[1] >> 19) | (in[2] << 13)) & 0x3ffffff;
+  r->v[3] = ((in[2] >> 12) | (in[3] << 20)) & 0x1ffffff;
   r->v[4] = (in[3] >> 6) & 0x3ffffff;
-  r->v[5] = (in[3] >> 32) | ((in[4] & 0x1ffff) << 0);
-  r->v[6] = (in[4] >> 25) | ((in[5] & 0xff) << 7);
-  r->v[7] = (in[5] >> 18) | ((in[6] & 0x7) << 14);
-  r->v[8] = (in[6] >> 11) | ((in[7] & 0x3fff) << 21);
+  r->v[5] = ((in[4]) | (in[5] << 32)) & 0x1ffffff;  // Fixed: use in[4] directly
+  r->v[6] = ((in[4] >> 25) | (in[5] << 7)) & 0x3ffffff;
+  r->v[7] = ((in[5] >> 18) | (in[6] << 14)) & 0x1ffffff;
+  r->v[8] = ((in[6] >> 11) | (in[7] << 21)) & 0x3ffffff;
   r->v[9] = (in[7] >> 14) & 0x1ffffff;
-  
-  r->v[9] &= 0x1ffffff; // Ensure top bit clear
 }
-
 /* Assumes input x being reduced below 2^255 */
 void fe25519_pack(unsigned char r[32], const fe25519 *x)
 {
   fe25519 y = *x;
-  uint32_t out[8];
+  uint32_t carry;
   int i;
   
   // Carry propagation
-  uint32_t carry = 0;
+  carry = 0;
   for(i=0; i<10; i++) {
     y.v[i] += carry;
     carry = y.v[i] >> ((i & 1) ? 25 : 26);
     y.v[i] &= (i & 1) ? 0x1ffffff : 0x3ffffff;
   }
   y.v[0] += carry * 19;
-  
-  // Final reduction
   carry = y.v[0] >> 26;
   y.v[0] &= 0x3ffffff;
   y.v[1] += carry;
   
-  // Pack into bytes
-  out[0] = y.v[0] | (y.v[1] << 26);
-  out[1] = (y.v[1] >> 6) | (y.v[2] << 19);
-  out[2] = (y.v[2] >> 13) | (y.v[3] << 12);
-  out[3] = (y.v[3] >> 20) | (y.v[4] << 6);
-  out[4] = (y.v[4] >> 26) | (y.v[5] << 0) | (y.v[6] << 25);
-  out[5] = (y.v[6] >> 7) | (y.v[7] << 18);
-  out[6] = (y.v[7] >> 14) | (y.v[8] << 11);
-  out[7] = (y.v[8] >> 21) | (y.v[9] << 4);
-  
-  for(i=0; i<8; i++) {
-    r[4*i+0] = out[i] & 0xff;
-    r[4*i+1] = (out[i] >> 8) & 0xff;
-    r[4*i+2] = (out[i] >> 16) & 0xff;
-    r[4*i+3] = (out[i] >> 24) & 0xff;
-  }
+  // Pack limbs into bytes
+  r[0] = y.v[0];
+  r[1] = y.v[0] >> 8;
+  r[2] = y.v[0] >> 16;
+  r[3] = (y.v[0] >> 24) | (y.v[1] << 2);
+  r[4] = y.v[1] >> 6;
+  r[5] = y.v[1] >> 14;
+  r[6] = (y.v[1] >> 22) | (y.v[2] << 3);
+  r[7] = y.v[2] >> 5;
+  r[8] = y.v[2] >> 13;
+  r[9] = (y.v[2] >> 21) | (y.v[3] << 5);
+  r[10] = y.v[3] >> 3;
+  r[11] = y.v[3] >> 11;
+  r[12] = (y.v[3] >> 19) | (y.v[4] << 6);
+  r[13] = y.v[4] >> 2;
+  r[14] = y.v[4] >> 10;
+  r[15] = y.v[4] >> 18;
+  r[16] = y.v[5];
+  r[17] = y.v[5] >> 8;
+  r[18] = y.v[5] >> 16;
+  r[19] = (y.v[5] >> 24) | (y.v[6] << 1);
+  r[20] = y.v[6] >> 7;
+  r[21] = y.v[6] >> 15;
+  r[22] = (y.v[6] >> 23) | (y.v[7] << 3);
+  r[23] = y.v[7] >> 5;
+  r[24] = y.v[7] >> 13;
+  r[25] = (y.v[7] >> 21) | (y.v[8] << 4);
+  r[26] = y.v[8] >> 4;
+  r[27] = y.v[8] >> 12;
+  r[28] = (y.v[8] >> 20) | (y.v[9] << 6);
+  r[29] = y.v[9] >> 2;
+  r[30] = y.v[9] >> 10;
+  r[31] = y.v[9] >> 18;
 }
-
 int fe25519_iszero(const fe25519 *x)
 {
   return fe25519_iseq(x, &fe25519_zero);
@@ -208,16 +160,16 @@ int fe25519_isnegative(const fe25519 *x)
 
 int fe25519_iseq(const fe25519 *x, const fe25519 *y)
 {
-  fe25519 t1,t2;
-  int i,r=0;
+  fe25519 t1, t2;
+  int i, r=0;
 
   t1 = *x;
   t2 = *y;
   fe25519_freeze(&t1);
   fe25519_freeze(&t2);
-  for(i=0;i<32;i++)
-    r |= (1-equal(t1.v[i],t2.v[i]));
-  return 1-r;
+  for(i=0; i<10; i++)  // Changed from 32 to 10
+    r |= (t1.v[i] ^ t2.v[i]);
+  return 1 - (int)((r | -r) >> 31);
 }
 
 void fe25519_cmov(fe25519 *r, const fe25519 *x, unsigned char b)
