@@ -20,9 +20,7 @@ void group_ge_pack(unsigned char r[GROUP_GE_PACKEDBYTES], const group_ge *x);
 
 void group_ge_add(group_ge *r, const group_ge *x, const group_ge *y);
 void group_ge_double(group_ge *r, const group_ge *x);
-void group_ge_cmov(group_ge *r, const group_ge *x, unsigned char b);
-/* External declarations (if not already present) */
+void group_ge_cswap(group_ge *p, group_ge *q, unsigned char b);
 extern const group_ge group_ge_neutral;
-extern const group_ge group_ge_base;
 
 #endif
