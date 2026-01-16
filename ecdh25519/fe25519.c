@@ -192,7 +192,6 @@ void fe25519_mul(fe25519 *r, const fe25519 *x, const fe25519 *y)
 {
   int i, j;
   uint64_t t[63];
-  uint64_t carry;
   
   for(i=0; i<63; i++) t[i] = 0;
 
@@ -239,7 +238,6 @@ void fe25519_square(fe25519 *r, const fe25519 *x)
 {
   int i, j;
   uint64_t t[63];
-  uint64_t carry;
   
   for(i=0; i<63; i++) t[i] = 0;
 
