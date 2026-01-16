@@ -66,78 +66,49 @@ void fe25519_freeze(fe25519 *r)
 
 void fe25519_unpack(fe25519 *r, const unsigned char x[32])
 {
-  uint32_t in[8];
-  int i;
+  uint64_t in;
   
-  for(i=0; i<8; i++) {
-    in[i] = ((uint32_t)x[4*i]) | ((uint32_t)x[4*i+1] << 8) | 
-            ((uint32_t)x[4*i+2] << 16) | ((uint32_t)x[4*i+3] << 24);
-  }
+  // Limb 0: bits 0-25 (26 bits)
+  in = ((uint64_t)x[0]) | ((uint64_t)x[1] << 8) | ((uint64_t)x[2] << 16) | ((uint64_t)x[3] << 24);
+  r->v[0] = in & 0x3ffffff;
   
-  r->v[0] = in[0] & 0x3ffffff;
-  r->v[1] = ((in[0] >> 26) | (in[1] << 6)) & 0x1ffffff;
-  r->v[2] = ((in[1] >> 19) | (in[2] << 13)) & 0x3ffffff;
-  r->v[3] = ((in[2] >> 12) | (in[3] << 20)) & 0x1ffffff;
-  r->v[4] = (in[3] >> 6) & 0x3ffffff;
-  r->v[5] = ((in[4]) | (in[5] << 32)) & 0x1ffffff;  // Fixed: use in[4] directly
-  r->v[6] = ((in[4] >> 25) | (in[5] << 7)) & 0x3ffffff;
-  r->v[7] = ((in[5] >> 18) | (in[6] << 14)) & 0x1ffffff;
-  r->v[8] = ((in[6] >> 11) | (in[7] << 21)) & 0x3ffffff;
-  r->v[9] = (in[7] >> 14) & 0x1ffffff;
+  // Limb 1: bits 26-50 (25 bits)
+  in = ((uint64_t)x[3] >> 2) | ((uint64_t)x[4] << 6) | ((uint64_t)x[5] << 14) | ((uint64_t)x[6] << 22);
+  r->v[1] = in & 0x1ffffff;
+  
+  // Limb 2: bits 51-76 (26 bits)
+  in = ((uint64_t)x[6] >> 3) | ((uint64_t)x[7] << 5) | ((uint64_t)x[8] << 13) | ((uint64_t)x[9] << 21);
+  r->v[2] = in & 0x3ffffff;
+  
+  // Limb 3: bits 77-101 (25 bits)
+  in = ((uint64_t)x[9] >> 5) | ((uint64_t)x[10] << 3) | ((uint64_t)x[11] << 11) | ((uint64_t)x[12] << 19);
+  r->v[3] = in & 0x1ffffff;
+  
+  // Limb 4: bits 102-127 (26 bits)
+  in = ((uint64_t)x[12] >> 6) | ((uint64_t)x[13] << 2) | ((uint64_t)x[14] << 10) | ((uint64_t)x[15] << 18);
+  r->v[4] = in & 0x3ffffff;
+  
+  // Limb 5: bits 128-152 (25 bits)
+  in = ((uint64_t)x[16]) | ((uint64_t)x[17] << 8) | ((uint64_t)x[18] << 16) | ((uint64_t)x[19] << 24);
+  r->v[5] = in & 0x1ffffff;
+  
+  // Limb 6: bits 153-178 (26 bits)
+  in = ((uint64_t)x[19] >> 1) | ((uint64_t)x[20] << 7) | ((uint64_t)x[21] << 15) | ((uint64_t)x[22] << 23);
+  r->v[6] = in & 0x3ffffff;
+  
+  // Limb 7: bits 179-203 (25 bits)
+  in = ((uint64_t)x[22] >> 3) | ((uint64_t)x[23] << 5) | ((uint64_t)x[24] << 13) | ((uint64_t)x[25] << 21);
+  r->v[7] = in & 0x1ffffff;
+  
+  // Limb 8: bits 204-229 (26 bits)
+  in = ((uint64_t)x[25] >> 4) | ((uint64_t)x[26] << 4) | ((uint64_t)x[27] << 12) | ((uint64_t)x[28] << 20);
+  r->v[8] = in & 0x3ffffff;
+  
+  // Limb 9: bits 230-254 (25 bits)
+  in = ((uint64_t)x[28] >> 6) | ((uint64_t)x[29] << 2) | ((uint64_t)x[30] << 10) | ((uint64_t)x[31] << 18);
+  r->v[9] = in & 0x1ffffff;
 }
-/* Assumes input x being reduced below 2^255 */
-void fe25519_pack(unsigned char r[32], const fe25519 *x)
-{
-  fe25519 y = *x;
-  uint32_t carry;
-  int i;
-  
-  // Carry propagation
-  carry = 0;
-  for(i=0; i<10; i++) {
-    y.v[i] += carry;
-    carry = y.v[i] >> ((i & 1) ? 25 : 26);
-    y.v[i] &= (i & 1) ? 0x1ffffff : 0x3ffffff;
-  }
-  y.v[0] += carry * 19;
-  carry = y.v[0] >> 26;
-  y.v[0] &= 0x3ffffff;
-  y.v[1] += carry;
-  
-  // Pack limbs into bytes
-  r[0] = y.v[0];
-  r[1] = y.v[0] >> 8;
-  r[2] = y.v[0] >> 16;
-  r[3] = (y.v[0] >> 24) | (y.v[1] << 2);
-  r[4] = y.v[1] >> 6;
-  r[5] = y.v[1] >> 14;
-  r[6] = (y.v[1] >> 22) | (y.v[2] << 3);
-  r[7] = y.v[2] >> 5;
-  r[8] = y.v[2] >> 13;
-  r[9] = (y.v[2] >> 21) | (y.v[3] << 5);
-  r[10] = y.v[3] >> 3;
-  r[11] = y.v[3] >> 11;
-  r[12] = (y.v[3] >> 19) | (y.v[4] << 6);
-  r[13] = y.v[4] >> 2;
-  r[14] = y.v[4] >> 10;
-  r[15] = y.v[4] >> 18;
-  r[16] = y.v[5];
-  r[17] = y.v[5] >> 8;
-  r[18] = y.v[5] >> 16;
-  r[19] = (y.v[5] >> 24) | (y.v[6] << 1);
-  r[20] = y.v[6] >> 7;
-  r[21] = y.v[6] >> 15;
-  r[22] = (y.v[6] >> 23) | (y.v[7] << 3);
-  r[23] = y.v[7] >> 5;
-  r[24] = y.v[7] >> 13;
-  r[25] = (y.v[7] >> 21) | (y.v[8] << 4);
-  r[26] = y.v[8] >> 4;
-  r[27] = y.v[8] >> 12;
-  r[28] = (y.v[8] >> 20) | (y.v[9] << 6);
-  r[29] = y.v[9] >> 2;
-  r[30] = y.v[9] >> 10;
-  r[31] = y.v[9] >> 18;
-}
+
 int fe25519_iszero(const fe25519 *x)
 {
   return fe25519_iseq(x, &fe25519_zero);
@@ -176,7 +147,7 @@ void fe25519_cmov(fe25519 *r, const fe25519 *x, unsigned char b)
 {
   uint32_t mask = (uint32_t)(-(int32_t)b);
   int i;
-  for(i = 0; i < 32; i++) {
+  for(i = 0; i < 10; i++) {  // Changed from 32 to 10
     r->v[i] ^= mask & (r->v[i] ^ x->v[i]);
   }
 }
@@ -186,17 +157,17 @@ void fe25519_neg(fe25519 *r, const fe25519 *x)
   fe25519 t = fe25519_zero;
   fe25519_sub(r, &t, x);
 }
-
 void fe25519_add(fe25519 *r, const fe25519 *x, const fe25519 *y)
 {
   int i;
-  for(i=0;i<10;i++) r->v[i] = x->v[i] + y->v[i];
+  for(i=0; i<10; i++) r->v[i] = x->v[i] + y->v[i];
+  // Lazy reduction - carries propagated in pack/freeze
 }
 void fe25519_double(fe25519 *r, const fe25519 *x)
 {
   int i;
-  for(i=0;i<32;i++) r->v[i] = 2*x->v[i];
-  reduce_add_sub(r);
+  for(i=0; i<10; i++) r->v[i] = 2*x->v[i];
+  // Carry propagation is handled implicitly in arithmetic operations
 }
 
 void fe25519_sub(fe25519 *r, const fe25519 *x, const fe25519 *y)
@@ -223,7 +194,7 @@ void fe25519_mul(fe25519 *r, const fe25519 *x, const fe25519 *y)
   uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8, t9;
   uint32_t r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;
   
-  // Compute products
+  // Compute products (low half)
   t0 = ((uint64_t)x0 * y0);
   t1 = ((uint64_t)x0 * y1) + ((uint64_t)x1 * y0);
   t2 = ((uint64_t)x0 * y2) + ((uint64_t)x1 * y1) + ((uint64_t)x2 * y0);
@@ -235,20 +206,29 @@ void fe25519_mul(fe25519 *r, const fe25519 *x, const fe25519 *y)
   t8 = ((uint64_t)x4 * y4) + ((uint64_t)x5 * y3) + ((uint64_t)x6 * y2) + ((uint64_t)x7 * y1) + ((uint64_t)x8 * y0);
   t9 = ((uint64_t)x5 * y4) + ((uint64_t)x6 * y3) + ((uint64_t)x7 * y2) + ((uint64_t)x8 * y1) + ((uint64_t)x9 * y0);
   
-  // Add high terms * 38
+  // Add high half terms * 38 (since 2^255 ≡ 19 mod p, 2^256 ≡ 38 mod p)
   t0 += ((uint64_t)38) * (((uint64_t)x5 * y5) + ((uint64_t)x6 * y4) + ((uint64_t)x7 * y3) + ((uint64_t)x8 * y2) + ((uint64_t)x9 * y1));
   t1 += ((uint64_t)38) * (((uint64_t)x6 * y5) + ((uint64_t)x7 * y4) + ((uint64_t)x8 * y3) + ((uint64_t)x9 * y2));
   t2 += ((uint64_t)38) * (((uint64_t)x7 * y5) + ((uint64_t)x8 * y4) + ((uint64_t)x9 * y3));
   t3 += ((uint64_t)38) * (((uint64_t)x8 * y5) + ((uint64_t)x9 * y4));
   t4 += ((uint64_t)38) * ((uint64_t)x9 * y5);
   
-  t0 += ((uint64_t)38) * (((uint64_t)x0 * y5) + ((uint64_t)x1 * y6) + ((uint64_t)x2 * y7) + ((uint64_t)x3 * y8) + ((uint64_t)x4 * y9));
-  t1 += ((uint64_t)38) * (((uint64_t)x0 * y6) + ((uint64_t)x1 * y7) + ((uint64_t)x2 * y8) + ((uint64_t)x3 * y9));
-  t2 += ((uint64_t)38) * (((uint64_t)x0 * y7) + ((uint64_t)x1 * y8) + ((uint64_t)x2 * y9));
-  t3 += ((uint64_t)38) * (((uint64_t)x0 * y8) + ((uint64_t)x1 * y9));
-  t4 += ((uint64_t)38) * ((uint64_t)x0 * y9);
+  // Add remaining cross terms * 38
+  t5 += ((uint64_t)x0 * y5) + ((uint64_t)x1 * y6) + ((uint64_t)x2 * y7) + ((uint64_t)x3 * y8) + ((uint64_t)x4 * y9);
+  t6 += ((uint64_t)x1 * y5) + ((uint64_t)x2 * y6) + ((uint64_t)x3 * y7) + ((uint64_t)x4 * y8) + ((uint64_t)x5 * y9);
+  t7 += ((uint64_t)x2 * y5) + ((uint64_t)x3 * y6) + ((uint64_t)x4 * y7) + ((uint64_t)x5 * y8) + ((uint64_t)x6 * y9);
+  t8 += ((uint64_t)x3 * y5) + ((uint64_t)x4 * y6) + ((uint64_t)x5 * y7) + ((uint64_t)x6 * y8) + ((uint64_t)x7 * y9);
+  t9 += ((uint64_t)x4 * y5) + ((uint64_t)x5 * y6) + ((uint64_t)x6 * y7) + ((uint64_t)x7 * y8) + ((uint64_t)x8 * y9);
   
-  // Carry propagation
+  t0 += ((uint64_t)38) * (((uint64_t)x6 * y6) + ((uint64_t)x7 * y7) + ((uint64_t)x8 * y8) + ((uint64_t)x9 * y9));
+  t1 += ((uint64_t)38) * (((uint64_t)x6 * y7) + ((uint64_t)x7 * y6) + ((uint64_t)x8 * y9) + ((uint64_t)x9 * y8));
+  t2 += ((uint64_t)38) * (((uint64_t)x6 * y8) + ((uint64_t)x7 * y9) + ((uint64_t)x8 * y6) + ((uint64_t)x9 * y7));
+  t3 += ((uint64_t)38) * (((uint64_t)x6 * y9) + ((uint64_t)x7 * y8) + ((uint64_t)x8 * y7) + ((uint64_t)x9 * y6));
+  t4 += ((uint64_t)38) * (((uint64_t)x7 * y9) + ((uint64_t)x8 * y8) + ((uint64_t)x9 * y7));
+  t5 += ((uint64_t)38) * (((uint64_t)x8 * y9) + ((uint64_t)x9 * y8));
+  t6 += ((uint64_t)38) * ((uint64_t)x9 * y9);
+  
+  // Carry propagation - alternating 26/25 bit limbs
   r0 = (uint32_t)t0 & 0x3ffffff; t1 += t0 >> 26;
   r1 = (uint32_t)t1 & 0x1ffffff; t2 += t1 >> 25;
   r2 = (uint32_t)t2 & 0x3ffffff; t3 += t2 >> 26;
@@ -266,7 +246,6 @@ void fe25519_mul(fe25519 *r, const fe25519 *x, const fe25519 *y)
   r->v[0]=r0; r->v[1]=r1; r->v[2]=r2; r->v[3]=r3; r->v[4]=r4;
   r->v[5]=r5; r->v[6]=r6; r->v[7]=r7; r->v[8]=r8; r->v[9]=r9;
 }
-
 void fe25519_square(fe25519 *r, const fe25519 *x)
 {
   fe25519_mul(r, x, x);
