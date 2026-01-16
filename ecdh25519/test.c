@@ -1,9 +1,7 @@
-#include <assert.h>
-#include <string.h>
 #include <stdio.h>
 #include "group.h"
 #include "smult.h"
-#include "../common/ecsw.h"
+#include "../common/stm32wrapper.h"
 
 unsigned char sk0[32] = {0xb1, 0x7a, 0xa0, 0x76, 0x93, 0xd7, 0x8d, 0x70, 0xfb, 0x44, 0x3a, 0x5b, 0xf1, 0xc6, 0x90, 0xe2, 
                          0xc3, 0x79, 0x39, 0x6f, 0x56, 0xac, 0xc5, 0x5f, 0xb5, 0xfc, 0x1c, 0xc5, 0x58, 0xa2, 0xd9, 0x85};
@@ -24,8 +22,9 @@ unsigned char cmpss[32]  = {0xfe, 0xb3, 0xdd, 0x58, 0x73, 0x4b, 0x42, 0xc8, 0x86
 
 int main(void)
 {
-  setup(ECSW_TEST);
-
+  clock_setup(CLOCK_FAST);
+  gpio_setup();
+  usart_setup(115200);
 
   int i;
   unsigned char pk0[GROUP_GE_PACKEDBYTES];
@@ -33,17 +32,10 @@ int main(void)
   unsigned char ss0[GROUP_GE_PACKEDBYTES];
   unsigned char ss1[GROUP_GE_PACKEDBYTES];
 
-  output("\n============ IGNORE OUTPUT BEFORE THIS LINE ============\n");
+  //send_USART_str((unsigned char*)"\n============ IGNORE OUTPUT BEFORE THIS LINE ============\n");
 
-  
   crypto_scalarmult_base(pk0, sk0); 
   crypto_scalarmult_base(pk1, sk1); 
-
-  group_ge a;
-  group_ge b;
-
-  group_ge_unpack(&a, pk0);
-  group_ge_unpack(&b, pk1);
 
   crypto_scalarmult(ss0, sk0, pk1);
   crypto_scalarmult(ss1, sk1, pk0);
@@ -52,30 +44,30 @@ int main(void)
   {
     if(ss0[i] != ss1[i])
     {
-      output("Test failed!\n");
+      send_USART_str((unsigned char*)"Test failed!\n");
       return -1;
     }
 
     if(pk0[i] != cmppk0[i])
     {
-      output("Test failed!\n");
+      send_USART_str((unsigned char*)"Test failed!\n");
       return -1;
     }
     if(pk1[i] != cmppk1[i])
     {
-      output("Test failed!\n");
+      send_USART_str((unsigned char*)"Test failed!\n");
       return -1;
     }
     if(ss0[i] != cmpss[i])
     {
-      output("Test failed!\n");
+      send_USART_str((unsigned char*)"Test failed!\n");
       return -1;
     }
   }     
 
-  output("Test successful!\n");
+  send_USART_str((unsigned char*)"Test successful!\n");
 
-  teardown();
+  while(1);
 
   return 0;
 }

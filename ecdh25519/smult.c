@@ -4,15 +4,11 @@
 
 int crypto_scalarmult(unsigned char *ss, const unsigned char *sk, const unsigned char *pk)
 {
-  group_ge p, r0, r1;
+  group_ge p, k, temp;
   unsigned char t[32];
-  int i;
-  unsigned char bit, swap, prevswap = 0;
-  uint32_t mask;
-  fe25519 tmp;
-  int j;
+  int i,j=5;
 
-  for(i=0; i<32; i++) {
+  for(i=0;i<32;i++) {
     t[i] = sk[i];
   }
 
@@ -22,61 +18,34 @@ int crypto_scalarmult(unsigned char *ss, const unsigned char *sk, const unsigned
 
   if(group_ge_unpack(&p, pk)) return -1;
 
-  // Montgomery ladder - constant time
-  r0 = group_ge_neutral;  
-  r1 = p;
-
-  for(i=254; i>=0; i--)
+  k = p;
+  for(i=31;i>=0;i--)
   {
-    bit = (t[i/8] >> (i & 7)) & 1;
-    swap = bit ^ prevswap;
-    prevswap = bit;
+    for(;j>=0;j--)
+    {
+      group_ge_double(&k, &k);
+      // if((t[i] >> j) & 1) {
+      //   group_ge_add(&k, &k, &p);
+      // }
+      group_ge_add(&temp, &k, &p);
 
-    // Constant-time conditional swap using XOR trick
-    mask = (uint32_t)(-(int32_t)swap);
-    for(j=0; j<32; j++) {
-      tmp.v[j] = mask & (r0.x.v[j] ^ r1.x.v[j]);
-      r0.x.v[j] ^= tmp.v[j];
-      r1.x.v[j] ^= tmp.v[j];
-      
-      tmp.v[j] = mask & (r0.y.v[j] ^ r1.y.v[j]);
-      r0.y.v[j] ^= tmp.v[j];
-      r1.y.v[j] ^= tmp.v[j];
-      
-      tmp.v[j] = mask & (r0.z.v[j] ^ r1.z.v[j]);
-      r0.z.v[j] ^= tmp.v[j];
-      r1.z.v[j] ^= tmp.v[j];
-      
-      tmp.v[j] = mask & (r0.t.v[j] ^ r1.t.v[j]);
-      r0.t.v[j] ^= tmp.v[j];
-      r1.t.v[j] ^= tmp.v[j];
+      fe25519_cmov(&k.x, &temp.x, (t[i] >> j) & 1);
+      fe25519_cmov(&k.y, &temp.y, (t[i] >> j) & 1);
+      fe25519_cmov(&k.z, &temp.z, (t[i] >> j) & 1);
+      fe25519_cmov(&k.t, &temp.t, (t[i] >> j) & 1);
     }
-    
-    group_ge_add(&r0, &r0, &r1);
-    group_ge_double(&r1, &r1);
-  }
-  
-  // Final swap
-  mask = (uint32_t)(-(int32_t)prevswap);
-  for(j=0; j<32; j++) {
-    tmp.v[j] = mask & (r0.x.v[j] ^ r1.x.v[j]);
-    r0.x.v[j] ^= tmp.v[j];
-    r1.x.v[j] ^= tmp.v[j];
-    
-    tmp.v[j] = mask & (r0.y.v[j] ^ r1.y.v[j]);
-    r0.y.v[j] ^= tmp.v[j];
-    r1.y.v[j] ^= tmp.v[j];
-    
-    tmp.v[j] = mask & (r0.z.v[j] ^ r1.z.v[j]);
-    r0.z.v[j] ^= tmp.v[j];
-    r1.z.v[j] ^= tmp.v[j];
-    
-    tmp.v[j] = mask & (r0.t.v[j] ^ r1.t.v[j]);
-    r0.t.v[j] ^= tmp.v[j];
-    r1.t.v[j] ^= tmp.v[j];
+    j = 7;
   }
 
-  group_ge_pack(ss, &r0);
+  group_ge_pack(ss, &k);
   return 0;
 }
+
+int crypto_scalarmult_base(unsigned char *pk, const unsigned char *sk)
+{
+  unsigned char t[GROUP_GE_PACKEDBYTES];
+  group_ge_pack(t, &group_ge_base);
+  return crypto_scalarmult(pk, sk, t);
+}
+
 

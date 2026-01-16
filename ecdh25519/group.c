@@ -24,6 +24,7 @@ const group_ge group_ge_neutral = {{{0}},
                                    {{0}}};
 
 #define ge25519_p3 group_ge
+#define ge25519_p3_8 group_ge_8
 
 typedef struct
 {
@@ -35,6 +36,14 @@ typedef struct
 
 typedef struct
 {
+  uint32_t x[8];
+  uint32_t z[8];
+  uint32_t y[8];
+  uint32_t t[8];
+} ge25519_p1p1_8;
+
+typedef struct
+{
   fe25519 x;
   fe25519 y;
   fe25519 z;
@@ -42,10 +51,35 @@ typedef struct
 
 typedef struct
 {
+  uint32_t x[8];
+  uint32_t y[8];
+  uint32_t z[8];
+} ge25519_p2_8;
+
+typedef struct
+{
   fe25519 x;
   fe25519 y;
 } ge25519_aff;
 
+typedef struct
+{
+  uint32_t x[8];
+  uint32_t y[8];
+} ge25519_aff_8;
+
+void group_convert_to_8(const group_ge *in, group_ge_8 *out) {
+  fe25519_convert_to_8(&in -> x, out -> x);
+  fe25519_convert_to_8(&in -> y, out -> y);
+  fe25519_convert_to_8(&in -> z, out -> z);
+  fe25519_convert_to_8(&in -> t, out -> t);
+}
+void group_convert_to_32(const group_ge_8 *in, group_ge *out) {
+  fe25519_convert_to_32(in -> x, &out -> x);
+  fe25519_convert_to_32(in -> y, &out -> y);
+  fe25519_convert_to_32(in -> z, &out -> z);
+  fe25519_convert_to_32(in -> t, &out -> t);
+}
 
 static void p1p1_to_p2(ge25519_p2 *r, const ge25519_p1p1 *p)
 {
@@ -54,10 +88,23 @@ static void p1p1_to_p2(ge25519_p2 *r, const ge25519_p1p1 *p)
   fe25519_mul(&r->z, &p->z, &p->t);
 }
 
+static void p1p1_to_p2_8(ge25519_p2_8 *r, const ge25519_p1p1_8 *p)
+{
+  fe25519_mul_8(r->x, p->x, p->t);
+  fe25519_mul_8(r->y, p->y, p->z);
+  fe25519_mul_8(r->z, p->z, p->t);
+}
+
 static void p1p1_to_p3(ge25519_p3 *r, const ge25519_p1p1 *p)
 {
   p1p1_to_p2((ge25519_p2 *)r, p);
   fe25519_mul(&r->t, &p->x, &p->y);
+}
+
+static void p1p1_to_p3_8(ge25519_p3_8 *r, const ge25519_p1p1_8 *p)
+{
+  p1p1_to_p2_8((ge25519_p2_8 *)r, p);
+  fe25519_mul_8(r->t, p->x, p->y);
 }
 
 static void add_p1p1(ge25519_p1p1 *r, const ge25519_p3 *p, const ge25519_p3 *q)
@@ -80,7 +127,45 @@ static void add_p1p1(ge25519_p1p1 *r, const ge25519_p3 *p, const ge25519_p3 *q)
   fe25519_add(&r->y, &b, &a); /* H = B+A */
 }
 
-/* See http://www.hyperelliptic.org/EFD/g1p/auto-twisted-extended-1.html#doubling-dbl-2008-hwcd */
+static void add_p1p1_8(ge25519_p1p1_8 *r, const ge25519_p3_8 *p, const ge25519_p3_8 *q)
+{
+  uint32_t a[8], b[8], c[8], d[8], t[8], ge25519_ec2d_temp[8];
+  fe25519_convert_to_8(&ge25519_ec2d, ge25519_ec2d_temp);
+  
+  fe25519_sub_8(a, p->y, p->x); /* A = (Y1-X1)*(Y2-X2) */
+  fe25519_sub_8(t, q->y, q->x);
+  fe25519_mul_8(a, a, t);
+  fe25519_add_8(b, p->x, p->y); /* B = (Y1+X1)*(Y2+X2) */
+  fe25519_add_8(t, q->x, q->y);
+  fe25519_mul_8(b, b, t);
+  fe25519_mul_8(c, p->t, q->t); /* C = T1*k*T2 */
+  fe25519_mul_8(c, c, ge25519_ec2d_temp);
+  fe25519_mul_8(d, p->z, q->z); /* D = Z1*2*Z2 */
+  fe25519_add_8(d, d, d);
+  fe25519_sub_8(r->x, b, a); /* E = B-A */
+  fe25519_sub_8(r->t, d, c); /* F = D-C */
+  fe25519_add_8(r->z, d, c); /* G = D+C */
+  fe25519_add_8(r->y, b, a); /* H = B+A */
+}
+
+static void dbl_p1p1_8(ge25519_p1p1_8 *r, const ge25519_p2_8 *p)
+{
+  uint32_t a[8],b[8],c[8],d[8];
+  fe25519_square_8(a, p->x);
+  fe25519_square_8(b, p->y);
+  fe25519_square_8(c, p->z);
+  fe25519_add_8(c, c, c);
+  fe25519_neg_8(d, a);
+  
+  fe25519_add_8(r->x, p->x, p->y);
+  fe25519_square_8(r->x, r->x);
+  fe25519_sub_8(r->x, r->x, a);
+  fe25519_sub_8(r->x, r->x, b);
+  fe25519_add_8(r->z, d, b);
+  fe25519_sub_8(r->t, r->z, c);
+  fe25519_sub_8(r->y, d, b);
+}
+
 static void dbl_p1p1(ge25519_p1p1 *r, const ge25519_p2 *p)
 {
   fe25519 a,b,c,d;
@@ -108,12 +193,6 @@ const group_ge group_ge_base = {{{0x1A, 0xD5, 0x25, 0x8F, 0x60, 0x2D, 0x56, 0xC9
                               {{0xA3, 0xDD, 0xB7, 0xA5, 0xB3, 0x8A, 0xDE, 0x6D, 0xF5, 0x52, 0x51, 0x77, 0x80, 0x9F, 0xF0, 0x20, 
                                 0x7D, 0xE3, 0xAB, 0x64, 0x8E, 0x4E, 0xEA, 0x66, 0x65, 0x76, 0x8B, 0xD7, 0x0F, 0x5F, 0x87, 0x67}}};
 
-
-
-/* Packing and unpacking is using Hamburg's "ristretto" approach. See
- * https://eprint.iacr.org/2015/673 and
- * https://ristretto.group/ 
- */
 int group_ge_unpack(group_ge *r, const unsigned char x[GROUP_GE_PACKEDBYTES])
 {
   fe25519 s, s2, chk, yden, ynum, yden2, xden2, isr, xdeninv, ydeninv, t;
@@ -256,45 +335,27 @@ void group_ge_pack(unsigned char r[GROUP_GE_PACKEDBYTES], const group_ge *x)
 
 void group_ge_add(group_ge *r, const group_ge *x, const group_ge *y)
 {
-  ge25519_p1p1 t;
-  add_p1p1(&t, x, y);
-  p1p1_to_p3(r,&t);
+  group_ge_8 r_8, x_8, y_8;
+  group_convert_to_8(r, &r_8);
+  group_convert_to_8(x, &x_8);
+  group_convert_to_8(y, &y_8);
+
+  ge25519_p1p1_8 t;
+  add_p1p1_8(&t, &x_8, &y_8);
+  p1p1_to_p3_8(&r_8,&t);
+
+  group_convert_to_32(&r_8, r);
 }
 
 void group_ge_double(group_ge *r, const group_ge *x)
 {
-  ge25519_p1p1 t;
-  dbl_p1p1(&t, (ge25519_p2 *)x);
-  p1p1_to_p3(r,&t);
-}
+  group_ge_8 r_8, x_8;
+  group_convert_to_8(r, &r_8);
+  group_convert_to_8(x, &x_8);
+  
+  ge25519_p1p1_8 t;
+  dbl_p1p1_8(&t, (ge25519_p2_8 *)&x_8);
+  p1p1_to_p3_8(&r_8,&t);
 
-void group_ge_cswap(group_ge *p, group_ge *q, unsigned char b)
-{
-  fe25519_cmov(&p->x, &q->x, b);
-  fe25519_cmov(&p->y, &q->y, b);
-  fe25519_cmov(&p->z, &q->z, b);
-  fe25519_cmov(&p->t, &q->t, b);
-  
-  fe25519 tmp;
-  uint32_t mask = (uint32_t)(-(int32_t)b);
-  int i;
-  
-  // Swap back using XOR trick
-  for(i = 0; i < 32; i++) {
-    tmp.v[i] = mask & (p->x.v[i] ^ q->x.v[i]);
-    p->x.v[i] ^= tmp.v[i];
-    q->x.v[i] ^= tmp.v[i];
-    
-    tmp.v[i] = mask & (p->y.v[i] ^ q->y.v[i]);
-    p->y.v[i] ^= tmp.v[i];
-    q->y.v[i] ^= tmp.v[i];
-    
-    tmp.v[i] = mask & (p->z.v[i] ^ q->z.v[i]);
-    p->z.v[i] ^= tmp.v[i];
-    q->z.v[i] ^= tmp.v[i];
-    
-    tmp.v[i] = mask & (p->t.v[i] ^ q->t.v[i]);
-    p->t.v[i] ^= tmp.v[i];
-    q->t.v[i] ^= tmp.v[i];
-  }
+  group_convert_to_32(&r_8, r);
 }
